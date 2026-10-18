@@ -1,0 +1,20 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { supabaseEnv } from "./env";
+
+export async function supabaseServer() {
+  const { url, key } = supabaseEnv();
+  const store = await cookies();
+  return createServerClient(url, key, {
+    cookies: {
+      getAll: () => store.getAll(),
+      setAll(list) {
+        try {
+          for (const { name, value, options } of list) store.set(name, value, options);
+        } catch {
+          // Chamado a partir de um Server Component: o proxy trata de renovar a sessão.
+        }
+      },
+    },
+  });
+}
