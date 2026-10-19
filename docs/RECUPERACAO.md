@@ -16,6 +16,8 @@
 
 O ZIP contém `data.json` (cartas e definições; valores monetários em cêntimos), `photos/` e `LEIA-ME.txt`.
 
+**Versões.** O formato atual é a versão 2 (inclui `buyer_shipping_cents` e `fee_on_shipping`). O restauro aceita também backups da versão 1 (anteriores aos portes cobrados): ficam com portes cobrados = 0 e taxa só sobre o preço da carta; o antigo “portes de venda” (`sale_shipping_cents`) é restaurado como **custo real do envio**, sem alterações — por isso os lucros restaurados são iguais aos de antes.
+
 ## Restaurar
 
 Requisitos: Node 20+, o projeto instalado (`npm install`) e a chave **service_role** do Supabase (Project Settings › API). Use-a só no seu computador.
@@ -38,7 +40,7 @@ As referências (C-0001…) e os identificadores das cartas são preservados; a 
 
 ## Recuperar de uma perda do projeto Supabase
 
-1. Crie um projeto novo e aplique `supabase/migrations/*.sql` (ver README).
+1. Crie um projeto novo e aplique `supabase/migrations/*.sql` por ordem (ver README).
 2. Configure Auth e as variáveis de ambiente.
 3. Crie a conta e execute o restauro acima.
 

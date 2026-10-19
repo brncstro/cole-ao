@@ -20,6 +20,11 @@ export interface ExportRow {
   salePrice: number | null; // aplicável: final se vendida, previsto caso contrário
   salePriceKind: "final" | "previsto" | null;
   saleDate: string | null;
+  /** Portes cobrados ao comprador (0 = grátis). */
+  buyerShipping: number;
+  /** Total pago pelo comprador = preço aplicável + portes cobrados (bruto, antes de taxas). null sem preço. */
+  totalPaid: number | null;
+  /** Custo real do envio. */
   saleShipping: number | null;
   packaging: number | null;
   fees: number | null;
@@ -52,6 +57,8 @@ export function toExportRow(c: CardRow): ExportRow {
     salePrice: k.applicablePrice,
     salePriceKind: k.applicablePrice == null ? null : c.status === "sold" ? "final" : "previsto",
     saleDate: c.sale_date,
+    buyerShipping: k.buyerShipping,
+    totalPaid: k.totalPaid,
     saleShipping: c.sale_shipping_cents,
     packaging: c.packaging_cents,
     fees: k.fees,

@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import JSZip from "jszip";
 import { createClient } from "@supabase/supabase-js";
+import { upgradeBackup } from "./backup-compat.mjs";
 
 const [zipPath, email, ...flags] = process.argv.slice(2);
 const dry = flags.includes("--dry-run");
@@ -27,8 +28,9 @@ if (!zipPath || !email || !url || !key) {
 
 const sb = createClient(url, key, { auth: { persistSession: false } });
 const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
-const data = JSON.parse(await zip.file("data.json").async("string"));
-if (data.format !== "minha-colecao-backup" || data.version !== 1) throw new Error("Ficheiro de backup não reconhecido.");
+const raw = JSON.parse(await zip.file("data.json").async("string"));
+const data = upgradeBackup(raw); // aceita backups v1 (antes dos portes cobrados) e v2
+if (raw.version !== data.version) console.log(`Backup versão ${raw.version} atualizado em memória para a versão ${data.version} (portes cobrados = 0).`);
 
 // localizar utilizador
 let user = null;

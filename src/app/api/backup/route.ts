@@ -40,7 +40,7 @@ export async function GET() {
     JSON.stringify(
       {
         format: "minha-colecao-backup",
-        version: 1,
+        version: 2,
         exportedAt,
         appName: profile.data?.app_name ?? "A Minha Coleção",
         counts: { cards: cards.length, options: options.data?.length ?? 0, photos: photoCount, missingPhotos: missing.length },

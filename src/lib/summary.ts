@@ -13,10 +13,16 @@ export interface Summary {
   unsoldCost: number;
 
   // Realizado (cartas vendidas)
+  /** Receita das cartas (preço final), sem portes. */
   revenue: number;
+  /** Portes cobrados aos compradores (só vendas concluídas). */
+  buyerShipping: number;
+  /** Total recebido dos compradores = receita das cartas + portes cobrados. Bruto: antes de taxas; não é lucro nem valor líquido. */
+  totalReceived: number;
   soldCost: number;
   fees: number;
   saleShippingAndPackaging: number;
+  /** Custo real do envio. */
   saleShipping: number;
   packaging: number;
   realizedProfit: number;
@@ -34,11 +40,14 @@ export interface Summary {
 export interface EstimateBlock {
   count: number;
   withEstimate: number;
+  /** Preço previsto das cartas (sem portes). */
   expectedValue: number;
+  /** Portes que se prevê cobrar (das cartas com estimativa). */
+  expectedBuyerShipping: number;
   estimatedProfit: number;
 }
 
-const emptyBlock = (): EstimateBlock => ({ count: 0, withEstimate: 0, expectedValue: 0, estimatedProfit: 0 });
+const emptyBlock = (): EstimateBlock => ({ count: 0, withEstimate: 0, expectedValue: 0, expectedBuyerShipping: 0, estimatedProfit: 0 });
 
 export function summarize(cards: CardRow[]): Summary {
   const s: Summary = {
@@ -51,6 +60,8 @@ export function summarize(cards: CardRow[]): Summary {
     totalCost: 0,
     unsoldCost: 0,
     revenue: 0,
+    buyerShipping: 0,
+    totalReceived: 0,
     soldCost: 0,
     fees: 0,
     saleShippingAndPackaging: 0,
@@ -74,6 +85,7 @@ export function summarize(cards: CardRow[]): Summary {
       s.countSold++;
       if (k.applicablePrice != null) {
         s.revenue += k.applicablePrice;
+        s.buyerShipping += k.buyerShipping;
         s.fees += k.fees ?? 0;
         s.saleShipping += k.saleShipping;
         s.packaging += k.packaging;
@@ -93,10 +105,12 @@ export function summarize(cards: CardRow[]): Summary {
     } else {
       block.withEstimate++;
       block.expectedValue += k.applicablePrice;
+      block.expectedBuyerShipping += k.buyerShipping;
       block.estimatedProfit += k.profit ?? 0;
     }
   }
 
+  s.totalReceived = s.revenue + s.buyerShipping;
   s.saleShippingAndPackaging = s.saleShipping + s.packaging;
   s.realizedMargin = marginFromTotals(s.realizedProfit, s.soldCost);
   s.totalProfitMixed = s.realizedProfit + s.forSale.estimatedProfit + s.inCollection.estimatedProfit;

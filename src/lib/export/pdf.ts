@@ -41,24 +41,26 @@ const money = (c: number | null): Cell => (c == null ? { text: dash, color: MUTE
 function columns(thumbs: boolean): Col[] {
   const cols: Col[] = [
     { key: "ref", label: "Referência", w: 68, cell: (r) => ({ text: r.ref }) },
-    { key: "name", label: "Carta", w: 124, cell: (r) => ({ text: r.name, bold: true }) },
-    { key: "set", label: "Coleção / edição", w: 96, cell: (r) => t([r.set, r.number].filter(Boolean).join(" · ")) },
+    { key: "name", label: "Carta", w: 98, cell: (r) => ({ text: r.name, bold: true }) },
+    { key: "set", label: "Coleção / edição", w: 84, cell: (r) => t([r.set, r.number].filter(Boolean).join(" · ")) },
     { key: "cond", label: "Conservação", w: 78, cell: (r) => t(r.condition) },
-    { key: "source", label: "Onde comprou", w: 70, cell: (r) => t(r.source) },
+    { key: "source", label: "Onde comprou", w: 74, cell: (r) => t(r.source) },
     { key: "purchase", label: "Preço de compra", w: 56, right: true, cell: (r) => money(r.purchase) },
     { key: "pship", label: "Portes de compra", w: 52, right: true, cell: (r) => money(r.purchaseShipping) },
     { key: "cost", label: "Custo total", w: 58, right: true, cell: (r) => ({ text: eur(r.totalCost), bold: true }) },
     { key: "status", label: "Situação", w: 56, cell: (r) => ({ text: r.status }) },
-    { key: "platform", label: "Plataforma de venda", w: 64, cell: (r) => t(r.platform) },
+    { key: "platform", label: "Plataforma de venda", w: 70, cell: (r) => t(r.platform) },
     {
       key: "sale",
-      label: "Preço de venda",
+      label: "Preço da carta",
       w: 62,
       right: true,
       cell: (r) => (r.salePrice == null ? { text: "Sem estimativa", color: MUTED } : { text: eur(r.salePrice), sub: r.salePriceKind === "final" ? "final" : "previsto" }),
     },
-    { key: "sship", label: "Portes de venda", w: 52, right: true, cell: (r) => money(r.saleShipping) },
-    { key: "pack", label: "Embalagem", w: 64, right: true, cell: (r) => money(r.packaging) },
+    { key: "bship", label: "Portes cobrados", w: 60, right: true, cell: (r) => (r.salePrice == null && !r.buyerShipping ? { text: dash, color: MUTED } : r.buyerShipping ? { text: eur(r.buyerShipping) } : { text: "Grátis", color: MUTED }) },
+    { key: "paid", label: "Total pago pelo comprador", w: 72, right: true, cell: (r) => (r.totalPaid == null ? { text: dash, color: MUTED } : { text: eur(r.totalPaid), bold: true, sub: r.salePriceKind === "previsto" ? "previsto" : undefined }) },
+    { key: "sship", label: "Custo real do envio", w: 52, right: true, cell: (r) => money(r.saleShipping) },
+    { key: "pack", label: "Embalagem", w: 70, right: true, cell: (r) => money(r.packaging) },
     { key: "fees", label: "Taxas", w: 52, right: true, cell: (r) => (r.fees == null ? { text: dash, color: MUTED } : { text: eur(r.fees), sub: r.feesManual ? "efetivas" : undefined }) },
     {
       key: "profit",
@@ -68,7 +70,7 @@ function columns(thumbs: boolean): Col[] {
       cell: (r) => (r.profit == null ? { text: dash, color: MUTED } : { text: signed(r.profit), bold: true, color: r.profit > 0 ? POS : r.profit < 0 ? NEG : INK }),
     },
     { key: "margin", label: "Margem sobre o custo", w: 52, right: true, cell: (r) => (r.profit == null ? { text: dash, color: MUTED } : { text: clean(formatPercent(r.margin)) }) },
-    { key: "kind", label: "Tipo de lucro", w: 56, cell: (r) => ({ text: r.kindLabel, color: r.kind === "none" ? MUTED : INK }) },
+    { key: "kind", label: "Tipo de lucro", w: 64, cell: (r) => ({ text: r.kindLabel, color: r.kind === "none" ? MUTED : INK }) },
   ];
   if (thumbs) cols.unshift({ key: "thumb", label: "Foto", w: 38 });
   return cols;
@@ -228,10 +230,13 @@ export async function buildPdf(args: {
       {
         title: "Realizado (vendidas)",
         rows: [
-          ["Receita bruta", eur(summary.revenue)],
+          ["Receita das cartas", eur(summary.revenue)],
+          ["Portes cobrados aos compradores", eur(summary.buyerShipping)],
+          ["Total recebido (receita + portes, bruto)", eur(summary.totalReceived)],
           ["Custo das cartas vendidas", eur(summary.soldCost)],
           ["Taxas efetivas", eur(summary.fees)],
-          ["Portes de venda + embalagens", eur(summary.saleShippingAndPackaging)],
+          ["Custo real do envio", eur(summary.saleShipping)],
+          ["Embalagens", eur(summary.packaging)],
           ["Lucro realizado", signed(summary.realizedProfit), summary.realizedProfit > 0 ? POS : summary.realizedProfit < 0 ? NEG : INK],
           ["Margem global realizada", summary.countSold === 0 ? dash : clean(formatPercent(summary.realizedMargin))],
         ],
@@ -239,9 +244,11 @@ export async function buildPdf(args: {
       {
         title: "Estimado (não vendidas)",
         rows: [
-          ["À venda: valor previsto", eur(summary.forSale.expectedValue)],
+          ["À venda: valor previsto das cartas", eur(summary.forSale.expectedValue)],
+          ["À venda: portes previstos cobrados", eur(summary.forSale.expectedBuyerShipping)],
           ["À venda: lucro estimado", signed(summary.forSale.estimatedProfit)],
-          ["Em coleção: valor previsto", eur(summary.inCollection.expectedValue)],
+          ["Em coleção: valor previsto das cartas", eur(summary.inCollection.expectedValue)],
+          ["Em coleção: portes previstos cobrados", eur(summary.inCollection.expectedBuyerShipping)],
           ["Em coleção: lucro estimado", signed(summary.inCollection.estimatedProfit)],
           ["Cartas sem estimativa", String(summary.noEstimateCount)],
           ["Lucro total (realizado + estimado)", signed(summary.totalProfitMixed)],
@@ -249,7 +256,8 @@ export async function buildPdf(args: {
       },
     ];
     const lh = fs + 6;
-    const need = 24 + lh * 7 + 24;
+    const maxRows = Math.max(...blocks.map((b) => b.rows.length));
+    const need = 24 + lh * (maxRows + 1) + 24;
     if (y + 16 + need > bottom()) {
       doc.addPage();
       y = margin;
@@ -271,8 +279,8 @@ export async function buildPdf(args: {
         by += lh;
       }
     });
-    y += lh * 8;
-    setFont(false, fs - 0.5).fillColor(MUTED).text("O lucro realizado refere-se a vendas concluídas; os valores estimados baseiam-se nos preços previstos e não são dinheiro já ganho.", margin, y, { width: usable });
+    y += lh * (maxRows + 2);
+    setFont(false, fs - 0.5).fillColor(MUTED).text("Total pago pelo comprador = preço da carta + portes cobrados (valor bruto, antes de taxas). Lucro = total pago − custo real do envio − embalagem − taxas − custo total de compra. O lucro realizado refere-se a vendas concluídas; os estimados baseiam-se em preços previstos e não são dinheiro já ganho.", margin, y, { width: usable });
   }
 
   // ------------------------------------------------ rodapé com paginação

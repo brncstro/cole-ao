@@ -68,19 +68,23 @@ export default async function SummaryPage() {
         </Block>
 
         <Block title="Vendas realizadas" badge={<Badge tone="accent">Realizado</Badge>}>
-          <Row label="Receita bruta" value={formatEUR(s.revenue)} />
+          <Row label="Receita das cartas" note="Preço final das cartas vendidas, sem portes" value={formatEUR(s.revenue)} />
+          <Row label="Portes cobrados aos compradores" value={formatEUR(s.buyerShipping)} />
+          <Row label="Total recebido dos compradores" note="Receita das cartas + portes cobrados. Valor bruto, antes de taxas e custos — não é lucro nem valor líquido" value={formatEUR(s.totalReceived)} strong />
           <Row label="Custo das cartas vendidas" value={formatEUR(s.soldCost)} />
           <Row label="Taxas efetivas" value={formatEUR(s.fees)} />
-          <Row label="Portes de venda" value={formatEUR(s.saleShipping)} />
+          <Row label="Custo real do envio" value={formatEUR(s.saleShipping)} />
           <Row label="Embalagens" value={formatEUR(s.packaging)} />
           <Row label="Lucro realizado" value={profit(s.realizedProfit)} strong />
           <Row label="Margem global realizada" note="Lucro realizado ÷ custo das cartas vendidas" value={s.countSold === 0 ? "—" : formatPercent(s.realizedMargin)} />
         </Block>
 
         <Block title="Estimativas (não vendidas)" badge={<Badge tone="muted">Estimado</Badge>}>
-          <Row label="À venda — valor previsto" note={`${s.forSale.withEstimate} de ${s.forSale.count} com estimativa`} value={formatEUR(s.forSale.expectedValue)} />
+          <Row label="À venda — valor previsto das cartas" note={`${s.forSale.withEstimate} de ${s.forSale.count} com estimativa`} value={formatEUR(s.forSale.expectedValue)} />
+          <Row label="À venda — portes previstos cobrados" value={formatEUR(s.forSale.expectedBuyerShipping)} />
           <Row label="À venda — lucro estimado" value={profit(s.forSale.estimatedProfit)} />
-          <Row label="Em coleção — valor previsto" note={`${s.inCollection.withEstimate} de ${s.inCollection.count} com estimativa`} value={formatEUR(s.inCollection.expectedValue)} />
+          <Row label="Em coleção — valor previsto das cartas" note={`${s.inCollection.withEstimate} de ${s.inCollection.count} com estimativa`} value={formatEUR(s.inCollection.expectedValue)} />
+          <Row label="Em coleção — portes previstos cobrados" value={formatEUR(s.inCollection.expectedBuyerShipping)} />
           <Row label="Em coleção — lucro estimado" value={profit(s.inCollection.estimatedProfit)} />
           <Row label="Cartas sem estimativa" note="Sem preço previsto; não entram nos valores acima" value={s.noEstimateCount} />
         </Block>

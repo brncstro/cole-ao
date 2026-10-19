@@ -15,7 +15,7 @@ import { ExportDialog } from "./ExportDialog";
 import { FilterPanel } from "./FilterPanel";
 import { ConfirmDialog, Empty, Spinner, btnPrimary, btnSecondary, inputCls, useToast } from "./ui";
 
-type ColKey = "set" | "condition" | "status" | "source" | "purchaseDate" | "cost" | "platform" | "sale" | "saleDate" | "profit" | "margin";
+type ColKey = "set" | "condition" | "status" | "source" | "purchaseDate" | "cost" | "platform" | "sale" | "buyerShipping" | "totalPaid" | "saleDate" | "profit" | "margin";
 
 const COLUMNS: { key: ColKey; label: string; sort?: SortKey; right?: boolean }[] = [
   { key: "set", label: "Coleção", sort: "set" },
@@ -26,6 +26,8 @@ const COLUMNS: { key: ColKey; label: string; sort?: SortKey; right?: boolean }[]
   { key: "cost", label: "Custo total", sort: "cost", right: true },
   { key: "platform", label: "Plataforma" },
   { key: "sale", label: "Valor de venda", sort: "sale", right: true },
+  { key: "buyerShipping", label: "Portes cobrados", right: true },
+  { key: "totalPaid", label: "Total pago pelo comprador", right: true },
   { key: "saleDate", label: "Data de venda", sort: "saleDate" },
   { key: "profit", label: "Lucro", sort: "profit", right: true },
   { key: "margin", label: "Margem", right: true },
@@ -179,9 +181,11 @@ export function CollectionView({ cards, options, appName }: { cards: CardRow[]; 
         ) : (
           <span className="inline-flex flex-col items-end">
             <Money cents={calc.applicablePrice} />
-            <span className="text-[11px] leading-tight text-muted">{c.status === "sold" ? "final" : "previsto"}</span>
+            <span className="text-[11px] leading-tight text-muted">{c.status === "sold" ? "final (carta)" : "previsto (carta)"}</span>
           </span>
         );
+      case "buyerShipping": return calc.applicablePrice == null && !calc.buyerShipping ? <span className="text-muted">—</span> : <Money cents={calc.buyerShipping} />;
+      case "totalPaid": return calc.totalPaid == null ? <span className="text-muted">—</span> : <Money cents={calc.totalPaid} />;
       case "saleDate": return <span className="tabular">{formatDate(c.sale_date)}</span>;
       case "profit": return <ProfitValue k={calc} />;
       case "margin": return <MarginValue k={calc} />;

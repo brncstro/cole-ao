@@ -1,5 +1,6 @@
 -- APENAS PARA TESTES LOCAIS: imita o mínimo do Supabase (auth, storage, roles) num Postgres normal.
-create role anon nologin; create role authenticated nologin;
+do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
 create schema auth; create schema storage;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text);
 create function auth.uid() returns uuid language sql stable as

@@ -4,6 +4,7 @@ import { parseMoney, formatEUR, formatSignedEUR, formatPercent, centsToInput, fo
 import { EMPTY_FILTERS, applyQuery, normalize, type Filters } from "./search";
 import { summarize } from "./summary";
 import type { CardRow } from "./types";
+import { cardToInput, emptyInput, inputToFinancials, validateCardInput } from "./card-input";
 
 function card(over: Partial<CardRow> = {}): CardRow {
   return {
@@ -12,7 +13,7 @@ function card(over: Partial<CardRow> = {}): CardRow {
     front_path: null, back_path: null, purchase_source: null, purchase_date: null,
     purchase_price_cents: 0, purchase_shipping_cents: null, status: "collection", sale_platform: null,
     expected_price_cents: null, final_price_cents: null, sale_date: null, sale_shipping_cents: null,
-    packaging_cents: null, fee_percent: null, fee_fixed_cents: null, fee_actual_cents: null,
+    packaging_cents: null, buyer_shipping_cents: 0, fee_on_shipping: false, fee_percent: null, fee_fixed_cents: null, fee_actual_cents: null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...over,
   };
 }
@@ -117,6 +118,99 @@ describe("cálculos", () => {
   });
 });
 
+describe("portes cobrados ao comprador", () => {
+  const base = { status: "sold" as const, sale_date: "2026-02-01" };
+
+  it("exemplo do pedido: compra 2,25 €, venda 3 €, portes cobrados 1,50 €, custo real 1,50 € → total pago 4,50 €, lucro 0,75 €", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 300, buyer_shipping_cents: 150, sale_shipping_cents: 150, packaging_cents: 0, fee_actual_cents: 0 }));
+    expect(k.totalPaid).toBe(450);
+    expect(k.profit).toBe(75);
+    expect(k.profitKind).toBe("realized");
+    expect(k.margin).toBeCloseTo(33.33, 1);
+  });
+  it("com taxas e embalagem em branco (não só 0) dá o mesmo resultado", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 300, buyer_shipping_cents: 150, sale_shipping_cents: 150 }));
+    expect(k.totalPaid).toBe(450);
+    expect(k.profit).toBe(75);
+  });
+  it("portes grátis para o comprador: o custo real do envio é despesa minha", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 300, buyer_shipping_cents: 0, sale_shipping_cents: 150 }));
+    expect(k.totalPaid).toBe(300);
+    expect(k.profit).toBe(300 - 150 - 225); // −0,75 €
+    expect(k.profit).toBe(-75);
+  });
+  it("portes cobrados diferentes do custo real: cobrar mais dá ganho, cobrar menos dá perda", () => {
+    const mk = (buyer: number, real: number) => computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 300, buyer_shipping_cents: buyer, sale_shipping_cents: real }));
+    expect(mk(200, 150).profit).toBe(300 + 200 - 150 - 225); // +1,25 €
+    expect(mk(100, 150).profit).toBe(300 + 100 - 150 - 225); // +0,25 €
+    expect(mk(200, 150).totalPaid).toBe(500);
+    expect(mk(100, 150).totalPaid).toBe(400);
+  });
+  it("cobrado ao comprador mas custo real em branco (ex.: mão em mão): conta como 0 de custo", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 300, buyer_shipping_cents: 150 }));
+    expect(k.profit).toBe(300 + 150 - 225);
+  });
+  it("taxa por defeito incide só sobre o preço da carta (comportamento anterior)", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, buyer_shipping_cents: 500, fee_percent: 10, fee_fixed_cents: 30 }));
+    expect(k.feeBase).toBe(1000);
+    expect(k.fees).toBe(130); // 10 % de 10,00 + 0,30
+  });
+  it("taxa opcionalmente sobre preço + portes cobrados", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, buyer_shipping_cents: 500, fee_percent: 10, fee_fixed_cents: 30, fee_on_shipping: true }));
+    expect(k.feeBase).toBe(1500);
+    expect(k.fees).toBe(180); // 10 % de 15,00 + 0,30
+    expect(k.profit).toBe(1500 - 180 - 225);
+  });
+  it("com portes grátis a opção 'taxa sobre portes' não muda nada", () => {
+    const a = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, fee_percent: 10 }));
+    const b = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, fee_percent: 10, fee_on_shipping: true }));
+    expect(b.fees).toBe(a.fees);
+    expect(b.profit).toBe(a.profit);
+  });
+  it("taxa efetiva manual prevalece, incluindo 0, mesmo com 'taxa sobre portes'", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, buyer_shipping_cents: 500, fee_percent: 10, fee_on_shipping: true, fee_actual_cents: 0 }));
+    expect(k.fees).toBe(0);
+    expect(k.profit).toBe(1500 - 225);
+    const k2 = computeCard(card({ ...base, purchase_price_cents: 225, final_price_cents: 1000, buyer_shipping_cents: 500, fee_percent: 10, fee_on_shipping: true, fee_actual_cents: 99 }));
+    expect(k2.fees).toBe(99);
+  });
+  it("total pago ≠ valor líquido após taxas", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 0, final_price_cents: 1000, buyer_shipping_cents: 300, fee_actual_cents: 200 }));
+    expect(k.totalPaid).toBe(1300);
+    expect(k.totalPaid! - k.fees!).toBe(1100); // líquido de taxas: outro valor
+    expect(k.totalPaid).not.toBe(k.totalPaid! - k.fees!);
+  });
+  it("estimativas: mesma lógica com preço previsto, identificadas como estimadas", () => {
+    const k = computeCard(card({ purchase_price_cents: 225, status: "for_sale", expected_price_cents: 300, buyer_shipping_cents: 150, sale_shipping_cents: 150 }));
+    expect(k.totalPaid).toBe(450);
+    expect(k.profit).toBe(75);
+    expect(k.profitKind).toBe("estimated");
+  });
+  it("sem preço previsto continua 'Sem estimativa', mesmo com portes registados", () => {
+    const k = computeCard(card({ purchase_price_cents: 225, status: "for_sale", buyer_shipping_cents: 150, sale_shipping_cents: 150 }));
+    expect(k.profit).toBeNull();
+    expect(k.totalPaid).toBeNull();
+    expect(k.profitKind).toBe("none");
+  });
+  it("registos anteriores à alteração (campos novos em falta ou a zero) dão exatamente o lucro antigo", () => {
+    const legacy = { ...card({ ...base, purchase_price_cents: 12000, purchase_shipping_cents: 350, final_price_cents: 14500, fee_actual_cents: 725, sale_shipping_cents: 250, packaging_cents: 50 }) } as Partial<CardRow>;
+    delete legacy.buyer_shipping_cents; // como se a linha viesse de antes da migração
+    delete legacy.fee_on_shipping;
+    const k = computeCard(legacy as CardRow);
+    expect(k.profit).toBe(1125); // = lucro de 11,25 € do exemplo original
+    expect(k.totalCost).toBe(12350);
+    expect(k.buyerShipping).toBe(0);
+    expect(k.totalPaid).toBe(14500);
+    const migrated = computeCard({ ...(legacy as CardRow), buyer_shipping_cents: 0, fee_on_shipping: false });
+    expect(migrated).toEqual(k);
+  });
+  it("registos antigos com taxa percentual: sem alteração de taxas nem de lucro", () => {
+    const k = computeCard(card({ ...base, purchase_price_cents: 1000, final_price_cents: 2000, fee_percent: 5, sale_shipping_cents: 300 }));
+    expect(k.fees).toBe(100);
+    expect(k.profit).toBe(2000 - 100 - 300 - 1000);
+  });
+});
+
 describe("pesquisa e filtros", () => {
   const cards: CardRow[] = [
     card({ id: "a", ref: "C-0001", name: "Charizard", set_name: "Base Set", condition: "Near Mint (NM)", status: "for_sale", purchase_source: "Cardmarket", purchase_price_cents: 4000 }),
@@ -189,9 +283,64 @@ describe("resumo", () => {
     expect(s.noEstimateCount).toBe(1);
     expect(s.totalProfitMixed).toBe(1125 + 500 - 100);
   });
+  it("distingue receita das cartas, portes cobrados e total recebido, sem contar nada duas vezes", () => {
+    const cards = [
+      card({ id: "1", status: "sold", purchase_price_cents: 225, final_price_cents: 300, sale_date: "2026-02-01", buyer_shipping_cents: 150, sale_shipping_cents: 150, fee_actual_cents: 0 }),
+      card({ id: "2", status: "sold", purchase_price_cents: 1000, final_price_cents: 2000, sale_date: "2026-02-02", buyer_shipping_cents: 0, sale_shipping_cents: 200, fee_actual_cents: 100 }),
+      card({ id: "3", status: "for_sale", purchase_price_cents: 500, expected_price_cents: 1500, buyer_shipping_cents: 120, sale_shipping_cents: 120 }),
+    ];
+    const s = summarize(cards);
+    expect(s.revenue).toBe(2300);          // só preço das cartas
+    expect(s.buyerShipping).toBe(150);     // só portes cobrados (vendidas)
+    expect(s.totalReceived).toBe(2450);    // receita + portes, uma vez cada
+    expect(s.totalReceived).toBe(s.revenue + s.buyerShipping);
+    expect(s.saleShipping).toBe(350);      // custo real do envio
+    expect(s.fees).toBe(100);
+    expect(s.realizedProfit).toBe(75 + (2000 - 100 - 200 - 1000)); // 75 + 700
+    // lucro = total recebido − taxas − envio − embalagem − custo das vendidas
+    expect(s.realizedProfit).toBe(s.totalReceived - s.fees - s.saleShipping - s.packaging - s.soldCost);
+    expect(s.forSale.expectedValue).toBe(1500);
+    expect(s.forSale.expectedBuyerShipping).toBe(120);
+    expect(s.forSale.estimatedProfit).toBe(1500 + 120 - 120 - 500);
+    // estimativas não entram no "recebido"
+    expect(s.totalReceived).toBe(2450);
+  });
   it("coleção vazia não rebenta", () => {
     const s = summarize([]);
     expect(s.realizedMargin).toBeNull();
     expect(s.count).toBe(0);
+  });
+});
+
+describe("formulário: portes cobrados", () => {
+  const base = () => ({ ...emptyInput("00000000-0000-0000-0000-000000000001"), name: "X", purchase_price: "2,25" });
+  it("exemplo completo via texto PT: total pago 4,50 € e lucro 0,75 €", () => {
+    const v = { ...base(), status: "sold" as const, final_price: "3", sale_date: "2026-02-01", buyer_shipping: "1,50", sale_shipping: "1,50", packaging: "0", fee_actual: "0" };
+    const r = validateCardInput(v);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.buyer_shipping_cents).toBe(150);
+    expect(r.value.sale_shipping_cents).toBe(150);
+    const k = computeCard(inputToFinancials(v));
+    expect(k.totalPaid).toBe(450);
+    expect(k.profit).toBe(75);
+  });
+  it("em branco = portes grátis (0), não erro", () => {
+    const r = validateCardInput(base());
+    expect(r.ok && r.value.buyer_shipping_cents).toBe(0);
+    expect(r.ok && r.value.fee_on_shipping).toBe(false);
+  });
+  it("rejeita valor negativo ou inválido", () => {
+    expect(validateCardInput({ ...base(), buyer_shipping: "-1" }).ok).toBe(false);
+    expect(validateCardInput({ ...base(), buyer_shipping: "abc" }).ok).toBe(false);
+  });
+  it("ida e volta cartão ↔ formulário preserva os portes", () => {
+    const c = card({ buyer_shipping_cents: 150, sale_shipping_cents: 175, fee_on_shipping: true });
+    const i = cardToInput(c);
+    expect(i.buyer_shipping).toBe("1,50");
+    expect(i.sale_shipping).toBe("1,75");
+    expect(i.fee_on_shipping).toBe(true);
+    const old = cardToInput(card({ buyer_shipping_cents: 0 }));
+    expect(old.buyer_shipping).toBe("");
   });
 });

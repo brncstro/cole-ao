@@ -74,6 +74,7 @@ function StatusDialog({ card, options, open, onClose }: { card: CardRow; options
   const [date, setDate] = useState(card.sale_date ?? today);
   const [expected, setExpected] = useState(centsToInput(card.expected_price_cents));
   const [shipping, setShipping] = useState(centsToInput(card.sale_shipping_cents));
+  const [buyerShipping, setBuyerShipping] = useState(card.buyer_shipping_cents ? centsToInput(card.buyer_shipping_cents) : "");
   const [packaging, setPackaging] = useState(centsToInput(card.packaging_cents));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -83,17 +84,18 @@ function StatusDialog({ card, options, open, onClose }: { card: CardRow; options
     if (!open) return;
     setStatus(card.status); setPlatform(card.sale_platform ?? ""); setFinal(centsToInput(card.final_price_cents));
     setDate(card.sale_date ?? today); setExpected(centsToInput(card.expected_price_cents));
-    setShipping(centsToInput(card.sale_shipping_cents)); setPackaging(centsToInput(card.packaging_cents)); setErrors({});
+    setShipping(centsToInput(card.sale_shipping_cents)); setBuyerShipping(card.buyer_shipping_cents ? centsToInput(card.buyer_shipping_cents) : ""); setPackaging(centsToInput(card.packaging_cents)); setErrors({});
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     setBusy(true);
     const o = platforms.find((p) => p.label === platform);
-    const patch: Partial<CardInput> = { status, sale_platform: platform, expected_price: expected, sale_shipping: shipping, packaging };
+    const patch: Partial<CardInput> = { status, sale_platform: platform, expected_price: expected, sale_shipping: shipping, buyer_shipping: buyerShipping, packaging };
     // Ao escolher outra plataforma, copia as taxas dela para esta carta (snapshot).
     if (platform !== (card.sale_platform ?? "") && o) {
       patch.fee_percent = o.fee_percent != null ? String(o.fee_percent).replace(".", ",") : "";
       patch.fee_fixed = centsToInput(o.fee_fixed_cents);
+      patch.fee_on_shipping = !!o.fee_on_shipping;
     }
     if (status === "sold") { patch.final_price = final; patch.sale_date = date; }
     const r = await setCardStatus(card.id, patch);
@@ -130,7 +132,8 @@ function StatusDialog({ card, options, open, onClose }: { card: CardRow; options
             <Field label="Data da venda *" htmlFor="st-date" error={errors.sale_date}>
               <input id="st-date" type="date" className={inputCls} value={date} aria-invalid={!!errors.sale_date} onChange={(e) => setDate(e.target.value)} />
             </Field>
-            <MoneyInput id="st-ship" label="Portes de venda suportados por mim" value={shipping} onChange={setShipping} error={errors.sale_shipping} hint="0 se o comprador pagou." />
+            <MoneyInput id="st-buyer-ship" label="Portes cobrados ao comprador" value={buyerShipping} onChange={setBuyerShipping} error={errors.buyer_shipping} hint="0 = envio grátis para o comprador." />
+            <MoneyInput id="st-ship" label="Custo real do envio" value={shipping} onChange={setShipping} error={errors.sale_shipping} hint="O que gastou a enviar, mesmo que o comprador o pague." />
             <MoneyInput id="st-pack" label="Embalagem" value={packaging} onChange={setPackaging} error={errors.packaging} />
           </div>
         ) : (
@@ -241,19 +244,24 @@ export function CardDetail({ card, options }: { card: CardRow; options: OptionRo
             <Row label="Plataforma de venda">{card.sale_platform}</Row>
             {card.status === "sold" ? (
               <>
-                <Row label="Preço final de venda">{formatEUR(card.final_price_cents)}</Row>
+                <Row label="Preço final de venda (carta)">{formatEUR(card.final_price_cents)}</Row>
                 <Row label="Data da venda">{formatDate(card.sale_date)}</Row>
               </>
             ) : (
-              <Row label="Preço de venda previsto">{card.expected_price_cents == null ? <span className="text-muted">Sem estimativa</span> : formatEUR(card.expected_price_cents)}</Row>
+              <Row label="Preço de venda previsto (carta)">{card.expected_price_cents == null ? <span className="text-muted">Sem estimativa</span> : formatEUR(card.expected_price_cents)}</Row>
             )}
+            <Row label="Portes cobrados ao comprador">{k.applicablePrice == null && !card.buyer_shipping_cents ? "—" : card.buyer_shipping_cents ? formatEUR(card.buyer_shipping_cents) : "Grátis para o comprador"}</Row>
+            <Row label={`Total pago pelo comprador${card.status === "sold" ? "" : " (previsto)"}`}>
+              {k.totalPaid == null ? <span className="text-muted">Sem estimativa</span> : <strong>{formatEUR(k.totalPaid)}</strong>}
+              <span className="block text-xs text-muted">preço + portes cobrados · bruto, antes de taxas</span>
+            </Row>
             <Row label={`Taxas (${k.feesAreManual ? "efetivas" : "calculadas"})`}>
               {feeLabel}
               {!k.feesAreManual && (card.fee_percent != null || card.fee_fixed_cents != null) && (
-                <span className="block text-xs text-muted">{formatFeePercent(card.fee_percent ?? 0)} + {formatEUR(card.fee_fixed_cents ?? 0)}</span>
+                <span className="block text-xs text-muted">{formatFeePercent(card.fee_percent ?? 0)} sobre {card.fee_on_shipping ? "preço + portes cobrados" : "o preço da carta"} + {formatEUR(card.fee_fixed_cents ?? 0)}</span>
               )}
             </Row>
-            <Row label="Portes de venda (suportados por mim)">{formatEUR(card.sale_shipping_cents)}</Row>
+            <Row label="Custo real do envio">{formatEUR(card.sale_shipping_cents)}</Row>
             <Row label="Embalagem">{formatEUR(card.packaging_cents)}</Row>
             <Row label={`Lucro ${k.profitKind === "realized" ? "realizado" : k.profitKind === "estimated" ? "estimado" : ""}`.trim()}><ProfitValue k={k} showKind={false} /></Row>
             <Row label="Margem sobre o custo">{k.profit == null ? "—" : formatPercent(k.margin)}</Row>

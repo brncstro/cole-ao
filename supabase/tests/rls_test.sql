@@ -1,4 +1,4 @@
--- Testes de RLS/constraints. Corre depois de local_stub.sql + 0001_init.sql, como superuser.
+-- Testes de RLS/constraints. Corre depois de local_stub.sql + 0001_init.sql + 0002_buyer_shipping.sql, como superuser.
 \set ON_ERROR_STOP off
 create temp table results(name text, ok boolean, detail text);
 grant all on results to public;
@@ -56,6 +56,16 @@ update public.profiles set app_name='Cartas do Bruno';
 update public.cards set condition='Near Mint (NM)' where name='Charizard';
 select public.rename_option('condition','Near Mint (NM)','Quase Nova (NM)');
 insert into results select 'rename_option propaga às cartas', condition='Quase Nova (NM)', condition from public.cards where name='Charizard';
+
+-- 0002: portes cobrados
+insert into results select 'buyer_shipping por defeito 0 e fee_on_shipping false', buyer_shipping_cents=0 and fee_on_shipping=false, '' from public.cards where name='Pikachu';
+do $$ begin
+  begin update public.cards set buyer_shipping_cents=-1 where name='Pikachu'; insert into results values ('portes cobrados negativos rejeitados', false,'');
+  exception when check_violation then insert into results values ('portes cobrados negativos rejeitados', true,''); end;
+end $$;
+update public.cards set buyer_shipping_cents=150, fee_on_shipping=true where name='Pikachu';
+insert into results select 'portes cobrados guardados', buyer_shipping_cents=150 and fee_on_shipping, '' from public.cards where name='Pikachu';
+insert into results select 'plataformas: fee_on_shipping false por defeito', bool_and(not fee_on_shipping), '' from public.options where kind='platform';
 
 -- storage A
 insert into storage.objects(bucket_id,name) values ('card-photos','00000000-0000-0000-0000-00000000000a/c1/f.jpg');

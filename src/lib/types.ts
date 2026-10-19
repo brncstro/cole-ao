@@ -33,11 +33,16 @@ export interface CardRow {
   expected_price_cents: number | null;
   final_price_cents: number | null;
   sale_date: string | null; // YYYY-MM-DD
+  /** Custo real do envio (o que efetivamente se gasta a enviar), independentemente de quem o financia. */
   sale_shipping_cents: number | null;
+  /** Portes cobrados ao comprador (0 = envio grátis para o comprador). */
+  buyer_shipping_cents: number;
   packaging_cents: number | null;
   fee_percent: number | null;
   fee_fixed_cents: number | null;
   fee_actual_cents: number | null; // valor efetivamente cobrado; 0 prevalece
+  /** Cópia da regra da plataforma: a taxa percentual incide também sobre os portes cobrados. */
+  fee_on_shipping: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +65,8 @@ export interface OptionRow {
   fee_percent: number | null;
   fee_fixed_cents: number | null;
   fee_is_example: boolean;
+  /** Plataformas: a taxa percentual incide também sobre os portes cobrados ao comprador. */
+  fee_on_shipping: boolean;
   sort_order: number;
 }
 

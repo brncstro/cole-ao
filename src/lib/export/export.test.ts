@@ -21,7 +21,7 @@ function mk(i: number): CardRow {
     purchase_price_cents: 12000 + i, purchase_shipping_cents: i % 2 ? 350 : null,
     status: sold ? "sold" : sale ? "for_sale" : "collection", sale_platform: sold || sale ? "eBay" : null,
     expected_price_cents: i % 5 === 0 ? null : 15000, final_price_cents: sold ? 14500 : null,
-    sale_date: sold ? "2026-02-01" : null, sale_shipping_cents: 250, packaging_cents: 50,
+    sale_date: sold ? "2026-02-01" : null, sale_shipping_cents: 250, packaging_cents: 50, buyer_shipping_cents: i % 4 === 0 ? 150 : 0, fee_on_shipping: i % 8 === 0,
     fee_percent: 5, fee_fixed_cents: null, fee_actual_cents: sold && i % 2 ? 725 : null,
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
   };
@@ -52,7 +52,7 @@ describe("exportações", () => {
     expect(ws.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
     expect(ws.autoFilter).toBeTruthy();
     const r3 = ws.getRow(4); // carta 3: vendida, i%2=1 → taxa efetiva 7,25
-    const H: Record<string, string> = { purchase: "Preço de compra", cost: "Custo total", fees: "Taxas", profit: "Lucro", margin: "Margem sobre o custo", pdate: "Data de compra" };
+    const H: Record<string, string> = { purchase: "Preço de compra", cost: "Custo total", fees: "Taxas", profit: "Lucro", margin: "Margem sobre o custo", pdate: "Data de compra", bship: "Portes cobrados ao comprador", paid: "Total pago pelo comprador", sship: "Custo real do envio", sale: "Preço da carta (aplicável)" };
     const col = (k: string) => { let n = 0; ws.getRow(1).eachCell((c, i) => { if (c.value === H[k]) n = i; }); return n; };
     const val = (k: string) => r3.getCell(col(k)).value;
     expect(typeof val("purchase")).toBe("number");
@@ -67,5 +67,50 @@ describe("exportações", () => {
     // coerência com a app: soma dos lucros das vendidas = resumo
     const sumProfitSold = rows.filter((r) => r.kind === "realized").reduce((s, r) => s + (r.profit ?? 0), 0);
     expect(sumProfitSold).toBe(summary.realizedProfit);
+  });
+
+  it("Excel e PDF: portes cobrados, total pago e lucro coerentes com a aplicação (exemplo 4,50 € / 0,75 €)", async () => {
+    const mkc = (id: string, over: Partial<CardRow>): CardRow => ({ ...mk(1), id, ref: `E-${id}`, name: `Exemplo ${id}`, status: "sold", sale_date: "2026-02-01", purchase_price_cents: 225, purchase_shipping_cents: null, final_price_cents: 300, expected_price_cents: null, packaging_cents: 0, fee_actual_cents: 0, fee_percent: null, fee_fixed_cents: null, fee_on_shipping: false, ...over });
+    const ex = [
+      mkc("1", { buyer_shipping_cents: 150, sale_shipping_cents: 150 }),   // 4,50 € / 0,75 €
+      mkc("2", { buyer_shipping_cents: 0, sale_shipping_cents: 150 }),     // portes grátis: 3,00 € / −0,75 €
+      mkc("3", { buyer_shipping_cents: 200, sale_shipping_cents: 150 }),   // cobrado ≠ custo real: 5,00 € / 1,25 €
+      mkc("4", { status: "for_sale", sale_date: null, final_price_cents: null, expected_price_cents: 300, buyer_shipping_cents: 150, sale_shipping_cents: 150 }), // estimado 4,50 € / 0,75 €
+    ];
+    const r = ex.map(toExportRow);
+    const sm = summarize(ex);
+    const m = { ...meta, count: r.length };
+    const buf = await buildXlsx({ rows: r, summary: sm, meta: m });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet("Cartas")!;
+    const head: Record<string, number> = {};
+    ws.getRow(1).eachCell((c, i) => (head[String(c.value)] = i));
+    expect(head["Custo real do envio"]).toBeGreaterThan(0);
+    expect(head["Portes de venda"]).toBeUndefined(); // rótulo antigo já não existe
+    const get = (row: number, h: string) => ws.getRow(row).getCell(head[h]).value;
+    expect(get(2, "Total pago pelo comprador")).toBeCloseTo(4.5);
+    expect(get(2, "Lucro")).toBeCloseTo(0.75);
+    expect(get(3, "Portes cobrados ao comprador")).toBe(0);
+    expect(get(3, "Total pago pelo comprador")).toBeCloseTo(3);
+    expect(get(3, "Lucro")).toBeCloseTo(-0.75);
+    expect(get(4, "Total pago pelo comprador")).toBeCloseTo(5);
+    expect(get(4, "Lucro")).toBeCloseTo(1.25);
+    expect(get(5, "Tipo de lucro")).toBe("Estimado");
+    expect(get(5, "Lucro")).toBeCloseTo(0.75);
+    // Resumo: receita das cartas, portes cobrados e total recebido separados (só vendidas), sem duplicação
+    const rs = wb.getWorksheet("Resumo")!;
+    const find = (label: string) => { let v: unknown = null; rs.eachRow((row) => { if (row.getCell(1).value === label) v = row.getCell(2).value; }); return v as number; };
+    expect(find("Receita das cartas")).toBeCloseTo(9);          // 3 + 3 + 3
+    expect(find("Portes cobrados aos compradores")).toBeCloseTo(3.5); // 1,5 + 0 + 2 (a estimada fica de fora)
+    expect(find("Total recebido dos compradores")).toBeCloseTo(12.5);
+    expect(find("Custo real do envio")).toBeCloseTo(4.5);
+    expect(find("Lucro realizado")).toBeCloseTo(0.75 - 0.75 + 1.25);
+    // PDF gera-se sem erros com as novas colunas
+    const pdf = await buildPdf({ rows: r, summary: sm, meta: m, options: { summary: true, thumbnails: false, pageSize: "A3" } });
+    fs.writeFileSync(`${OUT}/test-portes.pdf`, pdf);
+    expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
+    const pdfA4 = await buildPdf({ rows: r, summary: sm, meta: m, options: { summary: true, thumbnails: false, pageSize: "A4" } });
+    fs.writeFileSync(`${OUT}/test-portes-A4.pdf`, pdfA4);
   });
 });

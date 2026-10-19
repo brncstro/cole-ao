@@ -68,6 +68,7 @@ export function CardForm({ initial, isNew, userId, options, cardRef }: { initial
       // Cópia das taxas da plataforma para esta carta; alterações futuras nas definições não a afetam.
       fee_percent: o?.fee_percent != null ? String(o.fee_percent).replace(".", ",") : "",
       fee_fixed: o?.fee_fixed_cents != null ? centsToInput(o.fee_fixed_cents) : "",
+      fee_on_shipping: !!o?.fee_on_shipping,
     }));
   }
 
@@ -231,11 +232,13 @@ export function CardForm({ initial, isNew, userId, options, cardRef }: { initial
         </div>
 
         {v.status !== "collection" && (
-          <details open={!!(v.sale_shipping || v.packaging || v.fee_actual) } className="mt-4 rounded-lg border border-line">
-            <summary className="px-3 py-2 text-sm font-medium">Taxas, portes de venda e embalagem</summary>
+          <details open={!!(v.sale_shipping || v.buyer_shipping || v.packaging || v.fee_actual) } className="mt-4 rounded-lg border border-line">
+            <summary className="px-3 py-2 text-sm font-medium">Portes, embalagem e taxas</summary>
             <div className="grid gap-4 border-t border-line p-3 sm:grid-cols-2">
-              <MoneyInput id="sale_shipping" label="Portes de venda suportados por mim" value={v.sale_shipping} onChange={(x) => set("sale_shipping", x)} error={errors.sale_shipping} hint="Só o que pagou do seu bolso. Se o comprador pagou os portes, deixe 0." />
+              <MoneyInput id="buyer_shipping" label="Portes cobrados ao comprador" value={v.buyer_shipping} onChange={(x) => set("buyer_shipping", x)} error={errors.buyer_shipping} hint="O que o comprador paga pelo envio, além do preço da carta. Em branco ou 0 = envio grátis para o comprador." />
+              <MoneyInput id="sale_shipping" label="Custo real do envio" value={v.sale_shipping} onChange={(x) => set("sale_shipping", x)} error={errors.sale_shipping} hint="O que gastou efetivamente a enviar a carta, mesmo que o comprador o tenha pago." />
               <MoneyInput id="packaging" label="Embalagem" value={v.packaging} onChange={(x) => set("packaging", x)} error={errors.packaging} />
+              <div className="hidden sm:block" aria-hidden />
               <Field label="Taxa percentual da plataforma (%)" htmlFor="fee_percent" error={errors.fee_percent}>
                 <input id="fee_percent" inputMode="decimal" className={`${inputCls} tabular`} value={v.fee_percent} placeholder="0" aria-invalid={!!errors.fee_percent} onChange={(e) => set("fee_percent", e.target.value)} />
               </Field>
@@ -243,9 +246,24 @@ export function CardForm({ initial, isNew, userId, options, cardRef }: { initial
               {v.status === "sold" && (
                 <MoneyInput id="fee_actual" label="Taxas efetivamente cobradas (opcional)" value={v.fee_actual} onChange={(x) => set("fee_actual", x)} error={errors.fee_actual} hint="Se preencher (mesmo 0), este valor substitui as taxas calculadas." />
               )}
-              <p className="self-end text-sm text-muted sm:col-span-2">
-                Taxas {k.feesAreManual ? "efetivas" : "calculadas"}: <strong className="tabular text-ink">{k.fees == null ? "— (sem preço de venda)" : formatEUR(k.fees)}</strong>
-              </p>
+              <label className="flex items-start gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" className="mt-0.5 size-4 accent-[#2c5b60]" checked={v.fee_on_shipping} onChange={(e) => set("fee_on_shipping", e.target.checked)} />
+                <span>
+                  A taxa percentual incide também sobre os portes cobrados
+                  <span className="block text-xs text-muted">Copiado da plataforma escolhida; por defeito a % incide só sobre o preço da carta.</span>
+                </span>
+              </label>
+              <dl className="grid gap-1 rounded-lg bg-bg px-3 py-2 text-sm sm:col-span-2" aria-live="polite">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Total pago pelo comprador <span className="text-xs">(preço + portes cobrados)</span></dt>
+                  <dd className="tabular font-medium">{k.totalPaid == null ? "—" : formatEUR(k.totalPaid)}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Taxas {k.feesAreManual ? "efetivas" : "calculadas"}</dt>
+                  <dd className="tabular font-medium">{k.fees == null ? "— (sem preço de venda)" : formatEUR(k.fees)}</dd>
+                </div>
+                <p className="text-xs text-muted">O total pago é o valor bruto pago pelo comprador; não é o valor líquido depois de taxas e custos.</p>
+              </dl>
             </div>
           </details>
         )}

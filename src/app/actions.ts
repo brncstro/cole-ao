@@ -215,8 +215,8 @@ export async function deleteOption(id: string): Promise<ActionResult> {
   return { ok: true, data: undefined };
 }
 
-/** Altera as taxas de uma plataforma. Só afeta vendas futuras: as cartas já guardam a sua própria cópia. */
-export async function updatePlatformFees(id: string, percent: string, fixed: string): Promise<ActionResult> {
+/** Altera as taxas (e se a % incide sobre os portes cobrados) de uma plataforma. Só afeta vendas futuras: as cartas já guardam a sua própria cópia. */
+export async function updatePlatformFees(id: string, percent: string, fixed: string, feeOnShipping: boolean): Promise<ActionResult> {
   const { supabase } = await requireUser();
   if (!UUID.test(id)) return fail("Identificador inválido.");
   const p = parseDecimal(percent);
@@ -225,7 +225,7 @@ export async function updatePlatformFees(id: string, percent: string, fixed: str
   if (!f.ok) return fail(`Taxa fixa: ${f.error}`);
   const { error } = await supabase
     .from("options")
-    .update({ fee_percent: p.value, fee_fixed_cents: f.cents, fee_is_example: false })
+    .update({ fee_percent: p.value, fee_fixed_cents: f.cents, fee_on_shipping: !!feeOnShipping, fee_is_example: false })
     .eq("id", id)
     .eq("kind", "platform");
   if (error) return fail("Não foi possível guardar as taxas.");

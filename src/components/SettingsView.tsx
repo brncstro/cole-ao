@@ -18,7 +18,7 @@ function OptionList({ kind, items }: { kind: OptionKind; items: OptionRow[] }) {
   const [adding, setAdding] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [fees, setFees] = useState<Record<string, { p: string; f: string }>>({});
+  const [fees, setFees] = useState<Record<string, { p: string; f: string; s: boolean }>>({});
   const [del, setDel] = useState<OptionRow | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,7 +36,7 @@ function OptionList({ kind, items }: { kind: OptionKind; items: OptionRow[] }) {
       <h2 className="text-base font-semibold">{OPTION_KIND_LABEL[kind]}</h2>
       {kind === "platform" && (
         <p className="mt-1 text-sm text-muted">
-          As taxas abaixo são <strong>exemplos configuráveis</strong>, não valores garantidos — confirme-as nas condições atuais de cada plataforma. Alterá-las aqui só afeta vendas futuras: cada carta guarda a sua própria cópia das taxas.
+          As taxas abaixo são <strong>exemplos configuráveis</strong>, não valores garantidos — confirme-as nas condições atuais de cada plataforma. Por defeito a percentagem incide só sobre o preço da carta; assinale a opção se a plataforma também a aplica aos portes cobrados. Alterar isto só afeta vendas futuras: cada carta guarda a sua própria cópia.
         </p>
       )}
       {kind === "set" || kind === "category" ? <p className="mt-1 text-sm text-muted">Também são criadas automaticamente quando as escreve num formulário.</p> : null}
@@ -55,8 +55,8 @@ function OptionList({ kind, items }: { kind: OptionKind; items: OptionRow[] }) {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span className="min-w-0 flex-1 text-sm font-medium">{o.label}</span>
                 {kind === "platform" && (() => {
-                  const f = fees[o.id] ?? { p: o.fee_percent == null ? "" : String(o.fee_percent).replace(".", ","), f: centsToInput(o.fee_fixed_cents) };
-                  const changed = f.p !== (o.fee_percent == null ? "" : String(o.fee_percent).replace(".", ",")) || f.f !== centsToInput(o.fee_fixed_cents);
+                  const f = fees[o.id] ?? { p: o.fee_percent == null ? "" : String(o.fee_percent).replace(".", ","), f: centsToInput(o.fee_fixed_cents), s: !!o.fee_on_shipping };
+                  const changed = f.p !== (o.fee_percent == null ? "" : String(o.fee_percent).replace(".", ",")) || f.f !== centsToInput(o.fee_fixed_cents) || f.s !== !!o.fee_on_shipping;
                   return (
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="flex items-center gap-1 text-xs text-muted">Taxa %
@@ -65,9 +65,13 @@ function OptionList({ kind, items }: { kind: OptionKind; items: OptionRow[] }) {
                       <label className="flex items-center gap-1 text-xs text-muted">Fixa €
                         <input aria-label={`Taxa fixa — ${o.label}`} inputMode="decimal" className={`${inputCls} !w-20 !py-1.5 tabular`} value={f.f} onChange={(e) => setFees({ ...fees, [o.id]: { ...f, f: e.target.value } })} />
                       </label>
+                      <label className="flex basis-full items-center gap-1.5 text-xs text-muted">
+                        <input type="checkbox" className="size-4 accent-[#2c5b60]" checked={f.s} onChange={(e) => setFees({ ...fees, [o.id]: { ...f, s: e.target.checked } })} />
+                        A taxa % incide também sobre os portes cobrados ao comprador
+                      </label>
                       {o.fee_is_example && !changed && <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">exemplo</span>}
                       {(changed || o.fee_is_example) && (
-                        <button className={`${btnSecondary} !min-h-8 !px-2.5 text-xs`} disabled={busy} onClick={() => run(updatePlatformFees(o.id, f.p, f.f), "Taxas guardadas (só afetam vendas futuras).")}>
+                        <button className={`${btnSecondary} !min-h-8 !px-2.5 text-xs`} disabled={busy} onClick={() => run(updatePlatformFees(o.id, f.p, f.f, f.s), "Taxas guardadas (só afetam vendas futuras).")}>
                           {changed ? "Guardar taxas" : "Confirmar taxas"}
                         </button>
                       )}

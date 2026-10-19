@@ -32,8 +32,10 @@ export async function buildXlsx(args: { rows: ExportRow[]; summary: Summary | nu
     { header: "Custo total", key: "cost", width: 13, fmt: EUR },
     { header: "Situação", key: "status", width: 12 },
     { header: "Plataforma de venda", key: "platform", width: 18 },
-    { header: "Preço de venda (aplicável)", key: "sale", width: 16, fmt: EUR },
-    { header: "Portes de venda", key: "sship", width: 14, fmt: EUR },
+    { header: "Preço da carta (aplicável)", key: "sale", width: 16, fmt: EUR },
+    { header: "Portes cobrados ao comprador", key: "bship", width: 16, fmt: EUR },
+    { header: "Total pago pelo comprador", key: "paid", width: 16, fmt: EUR },
+    { header: "Custo real do envio", key: "sship", width: 14, fmt: EUR },
     { header: "Embalagem", key: "pack", width: 12, fmt: EUR },
     { header: "Taxas", key: "fees", width: 12, fmt: EUR },
     { header: "Lucro", key: "profit", width: 13, fmt: EUR },
@@ -61,6 +63,8 @@ export async function buildXlsx(args: { rows: ExportRow[]; summary: Summary | nu
       status: r.status,
       platform: r.platform,
       sale: euros(r.salePrice),
+      bship: r.salePrice == null && !r.buyerShipping ? null : euros(r.buyerShipping),
+      paid: euros(r.totalPaid),
       sship: euros(r.saleShipping),
       pack: euros(r.packaging),
       fees: euros(r.fees),
@@ -124,18 +128,22 @@ export async function buildXlsx(args: { rows: ExportRow[]; summary: Summary | nu
     line("Custo das cartas ainda não vendidas", euros(summary.unsoldCost), EUR);
     rs.addRow([]);
     section("Realizado (vendas concluídas)");
-    line("Receita bruta", euros(summary.revenue), EUR);
+    line("Receita das cartas", euros(summary.revenue), EUR, "Preço final das cartas vendidas, sem portes");
+    line("Portes cobrados aos compradores", euros(summary.buyerShipping), EUR);
+    line("Total recebido dos compradores", euros(summary.totalReceived), EUR, "Receita das cartas + portes cobrados; bruto, antes de taxas e custos");
     line("Custo das cartas vendidas", euros(summary.soldCost), EUR);
     line("Taxas efetivas", euros(summary.fees), EUR);
-    line("Portes de venda", euros(summary.saleShipping), EUR);
+    line("Custo real do envio", euros(summary.saleShipping), EUR);
     line("Embalagens", euros(summary.packaging), EUR);
     line("Lucro realizado", euros(summary.realizedProfit), EUR);
     line("Margem global realizada", summary.realizedMargin == null ? null : summary.realizedMargin / 100, PCT, "Lucro realizado ÷ custo das cartas vendidas");
     rs.addRow([]);
     section("Estimado (não vendidas)", "Baseado em preços previstos; não é dinheiro já ganho");
-    line("À venda — valor previsto", euros(summary.forSale.expectedValue), EUR);
+    line("À venda — valor previsto das cartas", euros(summary.forSale.expectedValue), EUR);
+    line("À venda — portes previstos cobrados", euros(summary.forSale.expectedBuyerShipping), EUR);
     line("À venda — lucro estimado", euros(summary.forSale.estimatedProfit), EUR);
-    line("Em coleção — valor previsto", euros(summary.inCollection.expectedValue), EUR);
+    line("Em coleção — valor previsto das cartas", euros(summary.inCollection.expectedValue), EUR);
+    line("Em coleção — portes previstos cobrados", euros(summary.inCollection.expectedBuyerShipping), EUR);
     line("Em coleção — lucro estimado", euros(summary.inCollection.estimatedProfit), EUR);
     line("Cartas sem estimativa", summary.noEstimateCount, n);
     rs.addRow([]);

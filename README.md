@@ -8,16 +8,29 @@ Aplicação web privada (PT-PT) para gerir cartas e cromos: compras, vendas, fot
 - `src/lib/export/` — PDF (pdfkit, fonte DejaVu embebida) e Excel (exceljs).
 - `src/app/actions.ts` — ações de servidor (validação autoritativa com `validateCardInput`).
 - `src/app/api/export`, `api/backup` — exportações e backup ZIP (leem a coleção completa no servidor).
-- `supabase/migrations/0001_init.sql` — tabelas, restrições, triggers, RLS, bucket privado.
-- `supabase/tests/` — testes de RLS (Postgres local) · `scripts/restore.mjs` · `docs/RECUPERACAO.md`.
+- `supabase/migrations/` — `0001_init.sql` (tabelas, restrições, triggers, RLS, bucket privado) e `0002_buyer_shipping.sql` (portes cobrados).
+- `supabase/tests/` — testes de RLS e da migração 0002 (Postgres local) · `scripts/restore.mjs` · `docs/RECUPERACAO.md`.
 
 ## Configuração (uma vez)
 
 1. Crie um projeto em https://supabase.com.
-2. SQL Editor → cole e execute `supabase/migrations/0001_init.sql` (cria tabelas, RLS e o bucket privado `card-photos`).
+2. SQL Editor → execute por ordem `supabase/migrations/0001_init.sql` (tabelas, RLS e bucket privado `card-photos`) e `0002_buyer_shipping.sql`.
 3. Authentication → Providers → Email ativo. Para uma app só sua: depois de criar a sua conta, desative **Allow new users to sign up** (Authentication → Sign In / Providers). Em Authentication → URL Configuration, defina o *Site URL* (e o URL de produção).
 4. `cp .env.example .env.local` e preencha `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`.
 5. `npm install && npm run dev` → http://localhost:3000 → “Ainda não tenho conta”.
+
+## Atualizar uma instalação existente — migração 0002 (portes cobrados ao comprador)
+
+Não destrutiva e idempotente: acrescenta colunas, não apaga nem altera dados. Os registos existentes ficam com **portes cobrados = 0**, o antigo “portes de venda” passa a chamar-se **Custo real do envio** (mesmos valores) e a taxa % continua a incidir só sobre o preço da carta — os lucros anteriores não mudam.
+
+1. **Faça um backup antes** (Definições › Backup e recuperação).
+2. Supabase › SQL Editor › cole e execute `supabase/migrations/0002_buyer_shipping.sql` (ou `supabase db push`).
+3. Publique a nova versão da aplicação (o código novo precisa das colunas novas; execute a migração **antes** de publicar).
+4. Em Definições › Plataformas, assinale, se quiser, “A taxa % incide também sobre os portes cobrados” nas plataformas que o fazem (só afeta vendas futuras).
+
+Instalações novas executam as duas migrações por ordem (0001, 0002).
+
+**Regras de cálculo.** Total pago pelo comprador = preço da carta + portes cobrados (bruto, antes de taxas). Lucro = total pago − custo real do envio − embalagem − taxas − custo total de compra. Taxas = (preço, ou preço + portes cobrados se a plataforma o exigir) × % + taxa fixa; a taxa efetiva introduzida manualmente prevalece (mesmo 0). Nas cartas não vendidas usa-se o preço previsto e o valor é “Estimado”.
 
 ## Publicar (Vercel)
 

@@ -24,8 +24,12 @@ export interface CardInput {
   expected_price: string;
   final_price: string;
   sale_date: string;
+  /** Custo real do envio. */
   sale_shipping: string;
+  /** Portes cobrados ao comprador. */
+  buyer_shipping: string;
   packaging: string;
+  fee_on_shipping: boolean;
   fee_percent: string;
   fee_fixed: string;
   fee_actual: string;
@@ -37,7 +41,7 @@ export function emptyInput(id: string): CardInput {
     grading_company: "", grading_grade: "", notes: "", front_path: "", back_path: "",
     purchase_source: "", purchase_date: "", purchase_price: "", purchase_shipping: "",
     status: "collection", sale_platform: "", expected_price: "", final_price: "", sale_date: "",
-    sale_shipping: "", packaging: "", fee_percent: "", fee_fixed: "", fee_actual: "",
+    sale_shipping: "", buyer_shipping: "", packaging: "", fee_on_shipping: false, fee_percent: "", fee_fixed: "", fee_actual: "",
   };
 }
 
@@ -65,7 +69,9 @@ export function cardToInput(c: CardRow): CardInput {
     final_price: centsToInput(c.final_price_cents),
     sale_date: c.sale_date ?? "",
     sale_shipping: centsToInput(c.sale_shipping_cents),
+    buyer_shipping: c.buyer_shipping_cents ? centsToInput(c.buyer_shipping_cents) : "",
     packaging: centsToInput(c.packaging_cents),
+    fee_on_shipping: !!c.fee_on_shipping,
     fee_percent: c.fee_percent == null ? "" : String(c.fee_percent).replace(".", ","),
     fee_fixed: centsToInput(c.fee_fixed_cents),
     fee_actual: centsToInput(c.fee_actual_cents),
@@ -118,7 +124,8 @@ export function validateCardInput(input: CardInput, photoPrefix?: string): Valid
   const purchaseShipping = money("purchase_shipping", "Portes de compra");
   const expected = money("expected_price", "Preço previsto");
   const final = money("final_price", "Preço final de venda");
-  const saleShipping = money("sale_shipping", "Portes de venda");
+  const saleShipping = money("sale_shipping", "Custo real do envio");
+  const buyerShipping = money("buyer_shipping", "Portes cobrados ao comprador");
   const packaging = money("packaging", "Embalagem");
   const feeFixed = money("fee_fixed", "Taxa fixa");
   const feeActual = money("fee_actual", "Taxas efetivas");
@@ -184,6 +191,8 @@ export function validateCardInput(input: CardInput, photoPrefix?: string): Valid
       final_price_cents: sold ? final : null,
       sale_date: saleDate,
       sale_shipping_cents: saleShipping,
+      buyer_shipping_cents: buyerShipping ?? 0, // em branco = o comprador não paga portes
+      fee_on_shipping: !!input.fee_on_shipping,
       packaging_cents: packaging,
       fee_percent: feePercent,
       fee_fixed_cents: feeFixed,
@@ -207,6 +216,8 @@ export function inputToFinancials(input: CardInput) {
     expected_price_cents: m(input.expected_price),
     final_price_cents: sold ? m(input.final_price) : null,
     sale_shipping_cents: m(input.sale_shipping),
+    buyer_shipping_cents: m(input.buyer_shipping) ?? 0,
+    fee_on_shipping: !!input.fee_on_shipping,
     packaging_cents: m(input.packaging),
     fee_percent: pct.ok ? pct.value : null,
     fee_fixed_cents: m(input.fee_fixed),
